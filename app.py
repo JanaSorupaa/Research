@@ -1,13 +1,26 @@
-from typing import List, Union, Generator, Iterator
-from schemas import OpenAIChatMessage
 import os
 import pandas as pd
+from typing import List, Union, Generator, Iterator
 
+# Pydantic for validation
 from pydantic import BaseModel
+
+# Custom schema (if applicable)
+from schemas import OpenAIChatMessage
+
+# LangChain imports
+from langchain.schema import Document
+from langchain.vectorstores import Chroma
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.llms import OpenAI
+
+# LlamaIndex imports
+from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.llms.ollama import Ollama
+from llama_index.core import Settings, VectorStoreIndex, SimpleCSVReader
 
 
 class Pipeline:
-
     class Valves(BaseModel):
         LLAMAINDEX_OLLAMA_BASE_URL: str
         LLAMAINDEX_MODEL_NAME: str
@@ -26,10 +39,6 @@ class Pipeline:
         )
 
     async def on_startup(self):
-        from llama_index.embeddings.ollama import OllamaEmbedding
-        from llama_index.llms.ollama import Ollama
-        from llama_index.core import Settings, VectorStoreIndex, SimpleCSVReader
-
         # Configure embeddings and LLM
         Settings.embed_model = OllamaEmbedding(
             model_name=self.valves.LLAMAINDEX_EMBEDDING_MODEL_NAME,
@@ -42,7 +51,7 @@ class Pipeline:
 
         # Load CSV data
         global dataframe, index
-        csv_path = "C:\cowrie_feb-aug_2.csv"  
+        csv_path = "C:\sample1000.csv"  
 
         if os.path.exists(csv_path):
             self.dataframe = pd.read_csv(csv_path)
