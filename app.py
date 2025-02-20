@@ -51,7 +51,7 @@ class Pipeline:
 
         # Load CSV data
         global dataframe, index
-        csv_path = "C:\sample1000.csv"  
+        csv_path = "C:\cowrie_feb-aug_2.csv"  
 
         if os.path.exists(csv_path):
             self.dataframe = pd.read_csv(csv_path)
