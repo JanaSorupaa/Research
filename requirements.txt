@@ -1,0 +1,6 @@
+pandas
+pydantic
+llama-index
+llama-index-embeddings-ollama
+llama-index-llms-ollama
+openai
