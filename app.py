@@ -1,24 +1,10 @@
 import os
 import pandas as pd
 from typing import List, Union, Generator, Iterator
-
-# Pydantic for validation
 from pydantic import BaseModel
-
-# Custom schema (if applicable)
-from schemas import OpenAIChatMessage
-
-# LangChain imports
-from langchain.schema import Document
-from langchain.vectorstores import Chroma
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.llms import OpenAI
-
-# LlamaIndex imports
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.core import Settings, VectorStoreIndex, SimpleCSVReader
-
 
 class Pipeline:
     class Valves(BaseModel):
@@ -49,21 +35,19 @@ class Pipeline:
             base_url=self.valves.LLAMAINDEX_OLLAMA_BASE_URL,
         )
 
-        # Load CSV data
-        global dataframe, index
-        csv_path = "C:\sample1000.csv"  
+        # ✅ Corrected file path
+        csv_path = r"C:\Users\Jana Sorupaa\Downloads\sample 1000.csv"
 
         if os.path.exists(csv_path):
             self.dataframe = pd.read_csv(csv_path)
-            print("CSV data loaded successfully.")
+            print("✅ CSV data loaded successfully.")
 
             # Convert CSV rows into Llama Index format
             self.index = VectorStoreIndex.from_documents(SimpleCSVReader().load_data(csv_path))
         else:
-            print(f"Error: CSV file not found at {csv_path}")
+            print(f"❌ Error: CSV file not found at {csv_path}")
 
     async def on_shutdown(self):
-        # This function is called when the server is stopped.
         pass
 
     def pipe(
@@ -73,12 +57,8 @@ class Pipeline:
         This function takes a user query, retrieves relevant data from the indexed CSV file, 
         and generates a response using Llama Index and Ollama.
         """
-
-        print(messages)
-        print(user_message)
-
         if self.index is None:
-            return "Error: CSV data is not loaded. Please check the file path."
+            return "❌ Error: CSV data is not loaded. Please check the file path."
 
         query_engine = self.index.as_query_engine(streaming=True)
         response = query_engine.query(user_message)
