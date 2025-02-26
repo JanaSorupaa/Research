@@ -1,66 +1,101 @@
-import os
 import pandas as pd
-from typing import List, Union, Generator, Iterator
-from pydantic import BaseModel
-from llama_index.embeddings.ollama import OllamaEmbedding
-from llama_index.llms.ollama import Ollama
-from llama_index.core import Settings, VectorStoreIndex, SimpleCSVReader
+import os
+import logging
+import re
+from langchain_community.llms import Ollama
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
-class Pipeline:
-    class Valves(BaseModel):
-        LLAMAINDEX_OLLAMA_BASE_URL: str
-        LLAMAINDEX_MODEL_NAME: str
-        LLAMAINDEX_EMBEDDING_MODEL_NAME: str
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
-    def __init__(self):
-        self.dataframe = None  # Store CSV data
-        self.index = None  # Store the Llama Index
+# Set upload folder for CSV files
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-        self.valves = self.Valves(
-            **{
-                "LLAMAINDEX_OLLAMA_BASE_URL": os.getenv("LLAMAINDEX_OLLAMA_BASE_URL", "http://localhost:11434"),
-                "LLAMAINDEX_MODEL_NAME": os.getenv("LLAMAINDEX_MODEL_NAME", "llama3"),
-                "LLAMAINDEX_EMBEDDING_MODEL_NAME": os.getenv("LLAMAINDEX_EMBEDDING_MODEL_NAME", "nomic-embed-text"),
-            }
+# Store CSV content
+csv_data = None
+
+
+class Tools:
+    def format_output(text):
+        """Convert Markdown bold syntax to HTML <strong> tags."""
+        return re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", text)
+
+
+def initialize_llama3():
+    try:
+        create_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are an AI assistant that provides structured, concise answers strictly based on the uploaded CSV file. "
+                    "Format responses in a table where possible, and avoid unnecessary content.",
+                ),
+                ("user", "Question: {question}\nData: {data}"),
+            ]
         )
 
-    async def on_startup(self):
-        # Configure embeddings and LLM
-        Settings.embed_model = OllamaEmbedding(
-            model_name=self.valves.LLAMAINDEX_EMBEDDING_MODEL_NAME,
-            base_url=self.valves.LLAMAINDEX_OLLAMA_BASE_URL,
+        llama_model = Ollama(model="llama3.1:latest", temperature=0.2)
+        output_parser = StrOutputParser()
+
+        return create_prompt | llama_model | output_parser
+    except Exception as e:
+        logging.error(f"Failed to initialize chatbot: {e}")
+        return None
+
+
+chatbot_pipeline = initialize_llama3()
+
+
+def extract_relevant_data(query, df):
+    """Extract relevant rows based on keywords in the query (up to 500 rows)."""
+    query_keywords = query.lower().split()
+    relevant_rows = df[
+        df.apply(
+            lambda row: any(keyword in str(row).lower() for keyword in query_keywords),
+            axis=1,
         )
-        Settings.llm = Ollama(
-            model=self.valves.LLAMAINDEX_MODEL_NAME,
-            base_url=self.valves.LLAMAINDEX_OLLAMA_BASE_URL,
-        )
+    ]
 
-        # ✅ Corrected file path
-        csv_path = r"C:\Users\Jana Sorupaa\Downloads\sample 1000.csv"
+    if relevant_rows.empty:
+        return "No relevant data found in the CSV."
 
-        if os.path.exists(csv_path):
-            self.dataframe = pd.read_csv(csv_path)
-            print("✅ CSV data loaded successfully.")
+    return relevant_rows.head(500).to_string(index=False)
 
-            # Convert CSV rows into Llama Index format
-            self.index = VectorStoreIndex.from_documents(SimpleCSVReader().load_data(csv_path))
-        else:
-            print(f"❌ Error: CSV file not found at {csv_path}")
 
-    async def on_shutdown(self):
-        pass
+def main():
+    global csv_data
 
-    def pipe(
-        self, user_message: str, model_id: str, messages: List[dict], body: dict
-    ) -> Union[str, Generator, Iterator]:
-        """
-        This function takes a user query, retrieves relevant data from the indexed CSV file, 
-        and generates a response using Llama Index and Ollama.
-        """
-        if self.index is None:
-            return "❌ Error: CSV data is not loaded. Please check the file path."
+    # Prompt for CSV file input
+    file_path = input("Enter the path to the CSV file: ")
+    if not file_path.endswith(".csv"):
+        print("Invalid file format. Please upload a CSV file.")
+        return
 
-        query_engine = self.index.as_query_engine(streaming=True)
-        response = query_engine.query(user_message)
+    try:
+        csv_data = pd.read_csv(file_path)
+        print(f"Loaded CSV file: {file_path}")
+    except Exception as e:
+        print(f"Error loading CSV file: {e}")
+        return
 
-        return response.response_gen
+    while True:
+        query_input = input("Enter your query (or type 'exit' to quit): ")
+        if query_input.lower() == "exit":
+            break
+
+        if chatbot_pipeline and csv_data is not None:
+            try:
+                csv_text = extract_relevant_data(query_input, csv_data)
+                response = chatbot_pipeline.invoke(
+                    {"question": query_input, "data": csv_text}
+                )
+                print("\nQuery Result:\n", csv_text)
+                print("\nChatbot Response:\n", response)
+            except Exception as e:
+                print(f"Error during chatbot invocation: {e}")
+
+
+if __name__ == "__main__":
+    main()
